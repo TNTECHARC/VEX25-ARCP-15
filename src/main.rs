@@ -1,7 +1,7 @@
 #![no_main]
 #![no_std]
 
-use vexide::{devices::peripherals, prelude::*};
+use vexide::prelude::*;
 
 struct Robot {
     left_motor_front: Motor,
@@ -86,7 +86,7 @@ impl Robot {
 
 #[vexide::main]
 async fn main(peripherals: Peripherals) {
-    let mut robot = Robot {
+    let robot = Robot {
         left_motor_front: Motor::new(peripherals.port_12, Gearset::Blue, Direction::Reverse),
         left_motor_fmid: Motor::new(peripherals.port_13, Gearset::Blue, Direction::Forward),
         left_motor_bmid: Motor::new(peripherals.port_14, Gearset::Blue, Direction::Reverse),
