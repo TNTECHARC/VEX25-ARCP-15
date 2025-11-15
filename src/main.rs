@@ -1,7 +1,18 @@
 #![no_main]
 #![no_std]
+#![feature(future_join)]
 
+use core::{cell::RefCell, future::join};
+
+use alloc::rc::Rc;
+use localization::{odom_thread, Pose};
 use vexide::prelude::*;
+
+extern crate alloc;
+
+#[allow(non_snake_case)]
+pub mod PID;
+pub mod localization;
 
 struct Robot {
     left_motor_front: Motor,
@@ -20,11 +31,10 @@ struct Robot {
     intake_left: Motor,
     intake_right: Motor,
 
-    inertial: InertialSensor,
-   
+    pose: Rc<RefCell<Pose>>,
+  
     controller: Controller,
 }
-
 
 impl Compete for Robot {
     async fn autonomous(&mut self) {
@@ -41,9 +51,6 @@ impl Compete for Robot {
             let lside = forward + turn;
             let rside = forward - turn;
 
-            self.inertial.heading().unwrap_or_default();
-
-
             self.left_drive(lside * 12.0);
             self.right_drive(rside * 12.0);
 
@@ -55,13 +62,26 @@ impl Compete for Robot {
                 self.intake(0.0);
             }
 
-            sleep(core::time::Duration::from_millis(20)).await;
+            sleep(Controller::UPDATE_INTERVAL).await;
         }
 
     }
 }
 
 impl Robot {
+    async fn spin_to_angle(&mut self, target_angle: f64) {
+        let turn_pid = PID::PID::new(0.0,0.0,0.0);
+
+        loop {
+            let rot = self.pose.borrow().rot;
+
+            self.left_drive(0.0);
+            self.right_drive(0.0);
+
+            sleep(InertialSensor::UPDATE_INTERVAL).await;
+        }
+    }
+    
     fn left_drive(&mut self, power: f64) {
         self.left_motor_front.set_voltage(power).ok();
         self.left_motor_fmid.set_voltage(power).ok();
@@ -86,6 +106,13 @@ impl Robot {
 
 #[vexide::main]
 async fn main(peripherals: Peripherals) {
+    let pose = Rc::new(RefCell::new(
+        Pose {
+            x: 0.0,
+            y: 0.0,
+            rot: 0.0,
+        }));
+
     let robot = Robot {
         left_motor_front: Motor::new(peripherals.port_12, Gearset::Blue, Direction::Reverse),
         left_motor_fmid: Motor::new(peripherals.port_13, Gearset::Blue, Direction::Forward),
@@ -103,10 +130,22 @@ async fn main(peripherals: Peripherals) {
         intake_left: Motor::new(peripherals.port_1, Gearset::Blue, Direction::Forward),
         intake_right: Motor::new(peripherals.port_11, Gearset::Blue, Direction::Reverse),
 
-        inertial: InertialSensor::new(peripherals.port_8),
+        pose: pose.clone(),
 
         controller: peripherals.primary_controller,
     };
+
+    
+    let mut imu_1 = InertialSensor::new(peripherals.port_7);
+    let mut imu_2 = InertialSensor::new(peripherals.port_17);
+
+    let _calib = join!(imu_1.calibrate(), imu_2.calibrate()).await;
+
+    let _odom = spawn(odom_thread(
+        imu_1,
+        imu_2,
+        pose
+    ));
 
     robot.compete().await;
 }
