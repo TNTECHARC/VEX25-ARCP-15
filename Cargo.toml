@@ -1,7 +1,7 @@
 [package]
 name = "vexide-template"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,4 +13,4 @@ icon = "cool-x"
 compress = true
 
 [dependencies]
-vexide = "0.7.0"
+vexide = { version = "0.8.0", features = ["full", "default-sdk"] }

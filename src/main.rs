@@ -1,14 +1,10 @@
-#![no_main]
-#![no_std]
 #![feature(future_join)]
 
-use core::{cell::RefCell, future::join};
+use std::{cell::RefCell, future::join, rc::Rc};
 
-use alloc::rc::Rc;
 use localization::{odom_thread, Pose};
-use vexide::prelude::*;
 
-extern crate alloc;
+use vexide::prelude::*;
 
 #[allow(non_snake_case)]
 pub mod PID;

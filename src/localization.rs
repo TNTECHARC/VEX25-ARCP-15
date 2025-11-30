@@ -1,8 +1,6 @@
-use core::cell::RefCell;
+use std::{cell::RefCell, rc::Rc};
 
 use vexide::prelude::*;
-
-use crate::alloc::rc::Rc;
 
 pub struct Pose {
     pub x: f64,
@@ -16,8 +14,8 @@ pub async fn odom_thread(
     pose: Rc<RefCell<Pose>>) {
 
     loop {
-        let h1 = imu_1.heading().unwrap_or_default().to_degrees();
-        let h2 = imu_2.heading().unwrap_or_default().to_degrees();
+        let h1 = imu_1.heading().unwrap_or_default().as_degrees();
+        let h2 = imu_2.heading().unwrap_or_default().as_degrees();
 
         pose.borrow_mut().rot = (h1 + h2) / 2.0;
 
