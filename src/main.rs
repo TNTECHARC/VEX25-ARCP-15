@@ -1,25 +1,25 @@
 #![feature(future_join)]
 
-use std::{cell::RefCell, future::join, rc::Rc};
+use std::{cell::RefCell, ffi::CString, fmt::Write, future::join, ops::Deref, rc::Rc};
 
-use localization::{odom_thread, Pose};
-
-use vexide::prelude::*;
+use drivetrain::Drivetrain;
+use localization::{Pose, odom_thread};
+use vexide::{
+    color::Color,
+    display::{Font, FontFamily, FontSize, Text},
+    math::Point2,
+    prelude::*,
+};
 
 #[allow(non_snake_case)]
 pub mod PID;
+pub mod drivetrain;
 pub mod localization;
+pub mod utils;
 
 struct Robot {
-    left_motor_front: Motor,
-    left_motor_fmid: Motor,
-    left_motor_bmid: Motor,
-    left_motor_back: Motor,
-
-    right_motor_front: Motor,
-    right_motor_fmid: Motor,
-    right_motor_bmid: Motor,
-    right_motor_back: Motor,
+    display: Display,
+    drivetrain: Drivetrain,
 
     score_mech_left: Motor,
     score_mech_right: Motor,
@@ -27,8 +27,6 @@ struct Robot {
     intake_left: Motor,
     intake_right: Motor,
 
-    pose: Rc<RefCell<Pose>>,
-  
     controller: Controller,
 }
 
@@ -39,59 +37,45 @@ impl Compete for Robot {
 
     async fn driver(&mut self) {
         loop {
-            let state = self.controller.state().unwrap_or_default();
-
-            let forward = state.left_stick.y();
-            let turn = state.right_stick.x();
-
-            let lside = forward + turn;
-            let rside = forward - turn;
-
-            self.left_drive(lside * 12.0);
-            self.right_drive(rside * 12.0);
-
-            if state.button_l1.is_pressed() {
-                self.intake(12.0);
-            } else if state.button_l2.is_pressed() {
-                self.intake(-12.0);
-            } else {
-                self.intake(0.0);
+            {
+                self.display.erase(Color::BLACK);
+                let pose = self.drivetrain.pose.borrow();
+                let text = Text::from_string(
+                    format!("X: {:.2}, Y: {:.2}, R: {:.2}", pose.x, pose.y, pose.rot),
+                    Font::default(),
+                    [10, 10],
+                );
+                self.display.draw_text(&text, Color::WHITE, None);
             }
 
             sleep(Controller::UPDATE_INTERVAL).await;
         }
 
+        // loop {
+        //     let state = self.controller.state().unwrap_or_default();
+
+        //     let lside = state.left_stick.y();
+        //     let rside = state.right_stick.y();
+
+        //     // println!("{}", lside * 12.0);
+
+        //     self.drivetrain.left_drive(lside * 12.0);
+        //     self.drivetrain.right_drive(rside * 12.0);
+
+        //     if state.button_l1.is_pressed() {
+        //         self.intake(12.0);
+        //     } else if state.button_l2.is_pressed() {
+        //         self.intake(-12.0);
+        //     } else {
+        //         self.intake(0.0);
+        //     }
+
+        //     sleep(Controller::UPDATE_INTERVAL).await;
+        // }
     }
 }
 
 impl Robot {
-    async fn spin_to_angle(&mut self, target_angle: f64) {
-        let turn_pid = PID::PID::new(0.0,0.0,0.0);
-
-        loop {
-            let rot = self.pose.borrow().rot;
-
-            self.left_drive(0.0);
-            self.right_drive(0.0);
-
-            sleep(InertialSensor::UPDATE_INTERVAL).await;
-        }
-    }
-    
-    fn left_drive(&mut self, power: f64) {
-        self.left_motor_front.set_voltage(power).ok();
-        self.left_motor_fmid.set_voltage(power).ok();
-        self.left_motor_bmid.set_voltage(power).ok();
-        self.left_motor_back.set_voltage(power).ok();
-    }
-
-    fn right_drive(&mut self, power: f64) {
-        self.right_motor_front.set_voltage(power).ok();
-        self.right_motor_fmid.set_voltage(power).ok();
-        self.right_motor_bmid.set_voltage(power).ok();
-        self.right_motor_back.set_voltage(power).ok();
-    }
-
     fn intake(&mut self, power: f64) {
         self.intake_left.set_voltage(power).ok();
         self.intake_right.set_voltage(power).ok();
@@ -102,45 +86,52 @@ impl Robot {
 
 #[vexide::main]
 async fn main(peripherals: Peripherals) {
-    let pose = Rc::new(RefCell::new(
-        Pose {
-            x: 0.0,
-            y: 0.0,
-            rot: 0.0,
-        }));
+    let pose = Rc::new(RefCell::new(Pose {
+        x: 0.0,
+        y: 0.0,
+        rot: 0.0,
+    }));
 
     let robot = Robot {
-        left_motor_front: Motor::new(peripherals.port_12, Gearset::Blue, Direction::Reverse),
-        left_motor_fmid: Motor::new(peripherals.port_13, Gearset::Blue, Direction::Forward),
-        left_motor_bmid: Motor::new(peripherals.port_14, Gearset::Blue, Direction::Reverse),
-        left_motor_back: Motor::new(peripherals.port_15, Gearset::Blue, Direction::Forward),
+        drivetrain: Drivetrain {
+            left_motor_1: Motor::new(peripherals.port_1, Gearset::Blue, Direction::Forward),
+            left_motor_2: Motor::new(peripherals.port_11, Gearset::Blue, Direction::Forward),
+            left_motor_3: Motor::new(peripherals.port_2, Gearset::Blue, Direction::Reverse),
+            left_motor_4: Motor::new(peripherals.port_12, Gearset::Blue, Direction::Reverse),
 
-        right_motor_front: Motor::new(peripherals.port_2, Gearset::Blue, Direction::Forward),
-        right_motor_fmid: Motor::new(peripherals.port_3, Gearset::Blue, Direction::Reverse),
-        right_motor_bmid: Motor::new(peripherals.port_4, Gearset::Blue, Direction::Forward),
-        right_motor_back: Motor::new(peripherals.port_5, Gearset::Blue, Direction::Reverse),
+            right_motor_1: Motor::new(peripherals.port_20, Gearset::Blue, Direction::Reverse),
+            right_motor_2: Motor::new(peripherals.port_10, Gearset::Blue, Direction::Reverse),
+            right_motor_3: Motor::new(peripherals.port_19, Gearset::Blue, Direction::Forward),
+            right_motor_4: Motor::new(peripherals.port_9, Gearset::Blue, Direction::Forward),
+
+            pose: pose.clone(),
+        },
+
+        display: peripherals.display,
 
         score_mech_left: Motor::new(peripherals.port_6, Gearset::Blue, Direction::Reverse),
-        score_mech_right: Motor::new(peripherals.port_16, Gearset::Blue, Direction::Forward),
+        score_mech_right: Motor::new(peripherals.port_5, Gearset::Blue, Direction::Forward),
 
-        intake_left: Motor::new(peripherals.port_1, Gearset::Blue, Direction::Forward),
-        intake_right: Motor::new(peripherals.port_11, Gearset::Blue, Direction::Reverse),
-
-        pose: pose.clone(),
+        intake_left: Motor::new(peripherals.port_15, Gearset::Blue, Direction::Forward),
+        intake_right: Motor::new(peripherals.port_16, Gearset::Blue, Direction::Reverse),
 
         controller: peripherals.primary_controller,
     };
 
-    
-    let mut imu_1 = InertialSensor::new(peripherals.port_7);
+    let mut imu_1 = InertialSensor::new(peripherals.port_14);
     let mut imu_2 = InertialSensor::new(peripherals.port_17);
+
+    let tracking_wheel_1 = RotationSensor::new(peripherals.port_13, Direction::Forward);
+    let tracking_wheel_2 = RotationSensor::new(peripherals.port_18, Direction::Forward);
 
     let _calib = join!(imu_1.calibrate(), imu_2.calibrate()).await;
 
     let _odom = spawn(odom_thread(
         imu_1,
         imu_2,
-        pose
+        tracking_wheel_1,
+        tracking_wheel_2,
+        pose,
     ));
 
     robot.compete().await;

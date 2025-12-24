@@ -12,17 +12,28 @@ impl PID {
             Kp,
             Ki,
             Kd,
-            last_error: 0.0,
             total_error: 0.0,
+            last_error: 0.0,
         }
     }
 
-    pub fn step(&mut self, error: f64) -> f64 {
-        self.total_error += error;
+    pub fn step(&mut self, error: f64, delta: f64) -> f64 {
+        // Integral
+        self.total_error += error * delta;
 
-        let p = error * self.Kp;
-        let d = (error + self.last_error) * self.Kd;
+        // println!("Error{}, TError: {}", error, self.total_error);
 
+        // Derivative
+        let d = if delta > 0.0 {
+            self.Kd * (error - self.last_error) / delta
+        } else {
+            0.0
+        };
+
+        // Proportional
+        let p = self.Kp * error;
+
+        // Update last error
         self.last_error = error;
 
         p + self.Ki * self.total_error + d

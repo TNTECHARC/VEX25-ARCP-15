@@ -27,6 +27,10 @@
         devShell = pkgs.mkShell {
           buildInputs = [
             cargo-v5'
+
+            pkgs.pkg-config
+            pkgs.fontconfig
+
             (rustToolchain.override {
               extensions = [
                 "rust-analyzer"
