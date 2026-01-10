@@ -13,12 +13,12 @@ pub fn degree_wrap(value: f64) -> f64 {
 }
 
 #[inline(always)]
-pub fn deg_to_rad(deg: f64) -> f64 {
+pub const fn deg_to_rad(deg: f64) -> f64 {
     deg * (PI / 180.0)
 }
 
 #[inline(always)]
-pub fn rad_to_deg(rad: f64) -> f64 {
+pub const fn rad_to_deg(rad: f64) -> f64 {
     rad * (180.0 / PI)
 }
 

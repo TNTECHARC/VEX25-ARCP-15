@@ -1,8 +1,8 @@
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use vexide::{prelude::*, smart::motor::BrakeMode};
+use vexide::{math::Angle, prelude::*, smart::motor::BrakeMode, time::LowResolutionTime};
 
-use crate::{PID::PID, localization::Pose, utils::degree_wrap};
+use crate::{PID::PID, localization::Pose};
 
 pub struct Drivetrain {
     pub left_motor_1: Motor,
@@ -21,12 +21,13 @@ pub struct Drivetrain {
 impl Drivetrain {
     pub async fn spin_to_angle(&mut self, target_angle: f64) {
         let mut turn_pid = PID::new(24.0, 0.0, 0.0);
-        let rot = self.pose.borrow().rot;
+        let _rot = self.pose.borrow().rot;
 
         let mut last_loop = Instant::now();
         let start_time = Instant::now();
 
         let mut settling = 0;
+        let target_angle_angle = Angle::from_degrees(target_angle);
 
         loop {
             let current_angle = self.pose.borrow().rot;
@@ -34,7 +35,9 @@ impl Drivetrain {
             let now = Instant::now();
             let delta = now.duration_since(last_loop).as_secs_f64();
 
-            let error = degree_wrap(target_angle - current_angle);
+            let error = (target_angle_angle - current_angle)
+                .wrapped_half()
+                .as_degrees();
 
             if f64::abs(error) <= 0.5 {
                 if settling >= 200 {
@@ -49,7 +52,12 @@ impl Drivetrain {
 
             let spin = turn_pid.step(error / 360.0, delta).clamp(-12.0, 12.0);
 
-            println!("Error: {}, Spin: {}, Rot: {}", error, spin, current_angle);
+            println!(
+                "Error: {}, Spin: {}, Rot: {}",
+                error,
+                spin,
+                current_angle.as_degrees()
+            );
 
             self.left_drive(spin);
             self.right_drive(-spin);
@@ -63,6 +71,28 @@ impl Drivetrain {
             }
 
             sleep(InertialSensor::UPDATE_INTERVAL).await;
+        }
+    }
+
+    pub fn motor_velocity(
+        &self,
+        motor: &Motor,
+        timestamp: &mut LowResolutionTime,
+        pos: &mut Angle,
+    ) -> f64 {
+        let new_angle = motor.position().unwrap_or_default();
+        let new_time = motor.timestamp().unwrap_or(LowResolutionTime::now());
+
+        let delta_angle = (new_angle - *pos).as_turns();
+        let delta_time = new_time.duration_since(*timestamp).as_secs_f64();
+
+        *pos = new_angle;
+        *timestamp = new_time;
+
+        if delta_time > 0.0 {
+            delta_angle / delta_time
+        } else {
+            0.0
         }
     }
 
