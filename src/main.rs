@@ -1,4 +1,5 @@
 #![feature(future_join)]
+#![allow(unexpected_cfgs)]
 
 use std::{
     cell::RefCell,
@@ -13,6 +14,7 @@ use drivetrain::Drivetrain;
 use localization::{Pose, odom_thread};
 use vexide::{
     color::Color,
+    controller::ControllerState,
     display::{Font, Text},
     math::Angle,
     prelude::*,
@@ -23,9 +25,6 @@ pub mod PID;
 pub mod drivetrain;
 pub mod localization;
 pub mod utils;
-
-const TRENT: bool = false;
-const BLACK: bool = false;
 
 struct Robot {
     display: Display,
@@ -53,56 +52,12 @@ impl Compete for Robot {
         loop {
             let state = self.controller.state().unwrap_or_default();
 
-            let lside;
-            let rside;
-
-            if TRENT {
-                lside = state.left_stick.y();
-                rside = state.right_stick.y();
-            } else {
-                let forward = state.left_stick.y();
-                let turn = state.right_stick.x();
-
-                lside = forward + turn;
-                rside = forward - turn;
-            }
+            let (lside, rside) = self.drive_control(&state);
 
             self.drivetrain.left_drive(lside * 12.0);
             self.drivetrain.right_drive(rside * 12.0);
 
-            if TRENT {
-                if state.button_r1.is_pressed() {
-                    self.intake(12.0);
-                } else if state.button_r2.is_pressed() {
-                    self.intake(-12.0);
-                } else {
-                    self.intake(0.0);
-                }
-
-                if state.button_l1.is_pressed() {
-                    self.score_mech(-12.0);
-                } else if state.button_l2.is_pressed() {
-                    self.score_mech(12.0);
-                } else {
-                    self.score_mech(0.0);
-                }
-            } else {
-                if state.button_l1.is_pressed() {
-                    self.intake(12.0);
-                } else if state.button_l2.is_pressed() {
-                    self.intake(-12.0);
-                } else {
-                    self.intake(0.0);
-                }
-
-                if state.button_r1.is_pressed() {
-                    self.score_mech(-12.0);
-                } else if state.button_r2.is_pressed() {
-                    self.score_mech(12.0);
-                } else {
-                    self.score_mech(0.0);
-                }
-            }
+            self.intake_control(&state);
 
             if state.button_x.is_now_pressed() {
                 self.flap.toggle().ok();
@@ -130,6 +85,60 @@ impl Compete for Robot {
 }
 
 impl Robot {
+    #[cfg(driver = "trent")]
+    fn drive_control(&mut self, state: &ControllerState) -> (f64, f64) {
+        let lside = state.left_stick.y();
+        let rside = state.right_stick.y();
+
+        (lside, rside)
+    }
+
+    #[cfg(not(driver = "trent"))]
+    fn drive_control(&mut self, state: &ControllerState) -> (f64, f64) {
+        let lside = state.left_stick.y();
+        let rside = state.right_stick.y();
+
+        (lside, rside)
+    }
+
+    #[cfg(driver = "trent")]
+    fn intake_control(&mut self, state: &ControllerState) {
+        if state.button_r1.is_pressed() {
+            self.intake(12.0);
+        } else if state.button_r2.is_pressed() {
+            self.intake(-12.0);
+        } else {
+            self.intake(0.0);
+        }
+
+        if state.button_l1.is_pressed() {
+            self.score_mech(-12.0);
+        } else if state.button_l2.is_pressed() {
+            self.score_mech(12.0);
+        } else {
+            self.score_mech(0.0);
+        }
+    }
+
+    #[cfg(not(driver = "trent"))]
+    fn intake_control(&mut self, state: &ControllerState) {
+        if state.button_r1.is_pressed() {
+            self.intake(12.0);
+        } else if state.button_r2.is_pressed() {
+            self.intake(-12.0);
+        } else {
+            self.intake(0.0);
+        }
+
+        if state.button_l1.is_pressed() {
+            self.score_mech(-12.0);
+        } else if state.button_l2.is_pressed() {
+            self.score_mech(12.0);
+        } else {
+            self.score_mech(0.0);
+        }
+    }
+
     fn intake(&mut self, power: f64) {
         self.intake_left.set_voltage(power).ok();
         self.intake_right.set_voltage(power).ok();
@@ -175,7 +184,7 @@ async fn main(peripherals: Peripherals) {
     }));
 
     // Black
-    let robot = if BLACK {
+    let robot = if cfg!(robot = "black") {
         Robot {
             drivetrain: Drivetrain {
                 left_motor_1: Motor::new(peripherals.port_1, Gearset::Blue, Direction::Forward),

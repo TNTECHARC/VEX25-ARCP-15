@@ -31,6 +31,7 @@
             pkgs.pkg-config
             pkgs.fontconfig
             pkgs.opencode
+            pkgs.gum
 
             (rustToolchain.override {
               extensions = [
